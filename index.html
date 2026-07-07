@@ -1,1 +1,137 @@
+/**
+ * SATBAR - טופס דיווח נזק לרכב
+ * קוד זה מיועד להדבקה ב-Google Apps Script (script.google.com)
+ *
+ * מה הוא עושה:
+ * 1. מקבל את נתוני הטופס (JSON) כולל קבצים מצורפים בקידוד base64
+ * 2. שומר עותק גיבוי של כל קובץ בתיקיית Drive ייעודית (נוצרת אוטומטית אם לא קיימת)
+ * 3. שולח מייל לרשימת הנמענים עם כל פרטי התיק + הקבצים עצמם מצורפים ישירות למייל
+ */
 
+// --- הגדרות: כאן מוסיפים/מסירים נמענים בעתיד ---
+const RECIPIENTS = [
+  'hagit@satbar.co.il',
+  'orna@satbar.co.il'
+  // 'miri@satbar.co.il',
+];
+
+const DRIVE_FOLDER_NAME = 'SATBAR - דיווחי נזק רכב';
+
+// מגבלת בטיחות לצירוף קבצים במייל (Gmail מגביל ל-25MB לכל מייל, נשארים עם מרווח ביטחון)
+const MAX_ATTACH_BYTES = 20 * 1024 * 1024;
+
+const DOC_LABELS = {
+  carLicense: 'רישיון רכב',
+  driverLicense: 'רישיון נהיגה',
+  bankConfirm: "צ'ק / אישור ניהול חשבון",
+  damagePhotos: 'תמונות / סרטון נזקים',
+  policeReport: 'אישור משטרה'
+};
+
+function doPost(e) {
+  try {
+    const data = JSON.parse(e.postData.contents);
+    const folder = getOrCreateFolder(DRIVE_FOLDER_NAME);
+    const caseFolder = folder.createFolder(data.caseNumber + ' - ' + data.insuredName);
+
+    const fileLinks = [];
+    const attachments = [];
+    let totalBytes = 0;
+
+    if (data.files) {
+      Object.keys(data.files).forEach(function (key) {
+        const f = data.files[key];
+        const bytes = Utilities.base64Decode(f.base64);
+        const blob = Utilities.newBlob(bytes, f.mimeType, f.filename);
+
+        // גיבוי קבוע בדרייב (תמיד נשמר, גם אם הקובץ גדול מדי לצירוף במייל)
+        const savedFile = caseFolder.createFile(blob);
+        fileLinks.push({
+          label: DOC_LABELS[key] || key,
+          url: savedFile.getUrl()
+        });
+
+        // צירוף ישיר למייל, כל עוד לא חורגים מהמגבלה המצטברת
+        totalBytes += bytes.length;
+        if (totalBytes <= MAX_ATTACH_BYTES) {
+          attachments.push(blob);
+        }
+      });
+    }
+
+    const tooLargeForEmail = totalBytes > MAX_ATTACH_BYTES;
+    const subject = 'תיק נזק חדש ' + data.caseNumber + ' - ' + data.insuredName;
+    const body = buildEmailBody(data, fileLinks, caseFolder.getUrl(), tooLargeForEmail);
+
+    MailApp.sendEmail({
+      to: RECIPIENTS.join(','),
+      subject: subject,
+      htmlBody: body,
+      attachments: attachments
+    });
+
+    return ContentService
+      .createTextOutput(JSON.stringify({ result: 'success' }))
+      .setMimeType(ContentService.MimeType.JSON);
+
+  } catch (err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ result: 'error', error: err.message }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function getOrCreateFolder(name) {
+  const folders = DriveApp.getFoldersByName(name);
+  if (folders.hasNext()) return folders.next();
+  return DriveApp.createFolder(name);
+}
+
+function buildEmailBody(data, fileLinks, folderUrl, tooLargeForEmail) {
+  let html = '<div dir="rtl" style="font-family:Arial,sans-serif;font-size:14px;color:#222">';
+  html += '<h2 style="color:#38307D">דיווח נזק חדש - ' + data.caseNumber + '</h2>';
+  html += '<table cellpadding="6" style="border-collapse:collapse">';
+  html += row('שם המבוטח', data.insuredName);
+  html += row('ת״ז', data.insuredId);
+  html += row('טלפון', data.phone);
+  html += row('מספר רישוי', data.plate);
+  html += row('תאריך האירוע', data.eventDate);
+  html += row('שעה משוערת', data.eventTime || '-');
+  html += row('סוג נזק', data.damageType);
+  html += row('תיאור האירוע', data.description);
+  html += '</table>';
+
+  if (data.thirdParty) {
+    html += '<h3 style="color:#38307D">פרטי צד ג׳</h3><table cellpadding="6" style="border-collapse:collapse">';
+    html += row('מספר רישוי צד ג׳', data.thirdParty.plate);
+    html += row('שם בעל הרכב', data.thirdParty.name);
+    html += row('טלפון', data.thirdParty.phone || '-');
+    html += row('חברת ביטוח', data.thirdParty.insurer || '-');
+    html += '</table>';
+  }
+
+  if (tooLargeForEmail) {
+    html += '<p style="background:#F5E7E4;color:#A8443A;padding:10px;border-radius:6px">';
+    html += '⚠ נפח הקבצים בתיק זה חרג מהמגבלה לצירוף ישיר במייל. כל הקבצים נשמרו בדרייב — ראה קישורים למטה.';
+    html += '</p>';
+  }
+
+  html += '<h3 style="color:#38307D">מסמכים</h3><ul>';
+  if (fileLinks.length === 0) {
+    html += '<li>לא צורפו קבצים</li>';
+  } else if (tooLargeForEmail) {
+    fileLinks.forEach(function (f) {
+      html += '<li><a href="' + f.url + '">' + f.label + '</a></li>';
+    });
+  } else {
+    html += '<li>מצורפים ישירות למייל זה (' + fileLinks.map(function(f){return f.label;}).join(', ') + ')</li>';
+  }
+  html += '</ul>';
+  html += '<p><a href="' + folderUrl + '">📁 עותק גיבוי של כל התיק בדרייב</a></p>';
+  html += '</div>';
+  return html;
+}
+
+function row(label, value) {
+  return '<tr><td style="font-weight:bold;color:#555">' + label + '</td><td>' + (value || '-') + '</td></tr>';
+}
