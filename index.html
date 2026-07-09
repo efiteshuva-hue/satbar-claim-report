@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- saved from url=(0056)file:///C:/Users/efi/Downloads/claim-report-form_11.html -->
+<!-- saved from url=(0056)file:///C:/Users/efi/Downloads/claim-report-form_15.html -->
 <html lang="he" dir="rtl"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -181,6 +181,7 @@
   .field .req { color: var(--stamp); margin-inline-start: 3px; }
   .field input[type="text"],
   .field input[type="tel"],
+  .field input[type="email"],
   .field input[type="date"],
   .field select,
   .field textarea {
@@ -386,7 +387,7 @@
 
   <div class="case-strip">
     <span>מספר תיק זמני</span>
-    <b id="caseNum">SB-4873</b>
+    <b id="caseNum">SB-5369</b>
   </div>
 
   <div style="height:16px"></div>
@@ -429,6 +430,17 @@
 
       <div class="row2">
         <div class="field">
+          <label>כתובת מייל</label>
+          <input type="email" id="fEmail" placeholder="name@example.com">
+        </div>
+        <div class="field">
+          <label>כתובת מגורים</label>
+          <input type="text" id="fAddress" placeholder="רחוב, מספר בית, עיר">
+        </div>
+      </div>
+
+      <div class="row2">
+        <div class="field">
           <label>תאריך האירוע<span class="req">*</span></label>
           <input type="date" id="fDate">
         </div>
@@ -445,7 +457,7 @@
     </div>
 
     <!-- STEP 2 -->
-    <div class="step" data-step="2" style="display:none">
+    <div class="step" data-step="2" style="display: none;">
       <h2>איזה סוג נזק מדווחים?</h2>
       <div class="hint">הבחירה קובעת אילו מסמכים נבקש בשלב הבא.</div>
 
@@ -464,7 +476,7 @@
     </div>
 
     <!-- STEP 3 -->
-    <div class="step" data-step="3" style="display:none">
+    <div class="step" data-step="3" style="display: none;">
       <h2>מסמכים ותמונות נדרשים</h2>
       <div class="hint">אפשר לצלם ישירות מהטלפון — אין צורך בסורק. כל תמונה הופכת אוטומטית לקובץ PDF נפרד לפני השליחה.</div>
 
@@ -563,6 +575,8 @@
 
       <div class="summary-list">
         <div class="summary-row"><span class="k">שם המבוטח</span><span class="v" id="sumName">—</span></div>
+        <div class="summary-row"><span class="k">מייל</span><span class="v" id="sumEmail">—</span></div>
+        <div class="summary-row"><span class="k">כתובת</span><span class="v" id="sumAddress">—</span></div>
         <div class="summary-row"><span class="k">רכב</span><span class="v" id="sumPlate">—</span></div>
         <div class="summary-row"><span class="k">סוג נזק</span><span class="v" id="sumType">נזק עצמי</span></div>
         <div class="summary-row"><span class="k">מסמכים שצורפו</span><span class="v" id="sumDocs">0 / 3</span></div>
@@ -573,7 +587,7 @@
   </div>
 
   <div class="nav-row">
-    <button class="btn btn-ghost" id="backBtn" style="visibility:hidden">← חזרה</button>
+    <button class="btn btn-ghost" id="backBtn" style="visibility: hidden;">← חזרה</button>
     <button class="btn btn-primary" id="nextBtn">המשך ←</button>
   </div>
 
@@ -613,6 +627,8 @@
 
   function updateSummary(){
     document.getElementById('sumName').textContent = document.getElementById('fName').value || '—';
+    document.getElementById('sumEmail').textContent = document.getElementById('fEmail').value || '—';
+    document.getElementById('sumAddress').textContent = document.getElementById('fAddress').value || '—';
     document.getElementById('sumPlate').textContent = document.getElementById('fPlate').value || '—';
     const mandatory = ['carLicense','driverLicense','bankConfirm'];
     const doneCount = mandatory.filter(k=>uploadedFiles[k]).length;
@@ -631,6 +647,12 @@
     if(!eventDesc.value.trim()){
       alert('נא לתאר בקצרה מה קרה באירוע.');
       eventDesc.focus();
+      return false;
+    }
+    const emailVal = document.getElementById('fEmail').value.trim();
+    if(emailVal && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal)){
+      alert('כתובת המייל לא תקינה, נא לבדוק שוב (או להשאיר ריק).');
+      document.getElementById('fEmail').focus();
       return false;
     }
     return true;
@@ -691,6 +713,8 @@
         insuredName: document.getElementById('fName').value,
         insuredId: document.getElementById('fId').value,
         phone: document.getElementById('fPhone').value,
+        email: document.getElementById('fEmail').value,
+        address: document.getElementById('fAddress').value,
         plate: document.getElementById('fPlate').value,
         eventDate: document.getElementById('fDate').value,
         eventTime: document.getElementById('fTime').value,
